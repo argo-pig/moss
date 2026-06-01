@@ -4,7 +4,7 @@ import Json.Encode as Encode
 import Json.Decode as Decode
 import Browser
 import Html exposing (Html, button, div, form, input, p, text)
-import Html.Attributes exposing (placeholder, value)
+import Html.Attributes exposing (disabled, placeholder, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 type alias Flags =
@@ -29,6 +29,7 @@ type alias Model =
     , status : String
     , person : Maybe Person
     , submissions : List Submission
+    , submittedToday : Bool
     }
 
 init : Flags -> ( Model, Cmd Msg )
@@ -47,6 +48,7 @@ init flags =
                 _ ->
                     Nothing
       , submissions = []
+      , submittedToday = False
       }
     , fetchSubmissions flags.apiUrl
     )
@@ -115,9 +117,10 @@ update msg model =
         SubmitResult result ->
             case result of
                 Ok response ->
-                    ( { model 
-                        | status = "Success: " ++ response 
+                    ( { model
+                        | submittedToday = True
                         , inputText = ""
+                        , status = response
                       }
                     , fetchSubmissions model.apiUrl
                     )
@@ -200,12 +203,17 @@ view model =
             div []
                 [ form [ onSubmit Submit ]
                     [ input
-                        [ placeholder "Enter text"
+                        [ disabled model.submittedToday
+                        , placeholder 
+                            (if model.submittedToday then
+                                "your message for today has been sent <3"
+                            else
+                                "type your message here")
                         , value model.inputText
                         , onInput UpdateText
                         ]
                         []
-                    , button [] [ text "Submit" ]
+                    , button [ disabled model.submittedToday ] [ text "Submit" ]
                     ]
                 , p [] [ text model.status ]
 
