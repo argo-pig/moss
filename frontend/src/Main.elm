@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Json.Encode as Encode
+import Json.Decode as Decode
 import Browser
 import Html exposing (Html, button, div, form, input, p, text)
 import Html.Attributes exposing (placeholder, value)
@@ -15,11 +16,19 @@ type Person
     = Mary
     | Connor
 
+type alias Submission =
+    { id : Int
+    , person : String
+    , text : String
+    , createdAt : String
+    }
+
 type alias Model =
     { apiUrl : String
     , inputText : String
     , status : String
     , person : Maybe Person
+    , submissions : List Submission
     }
 
 init : Flags -> ( Model, Cmd Msg )
@@ -31,12 +40,15 @@ init flags =
             case flags.person of
                 Just "Mary" ->
                     Just Mary
+
                 Just "Connor" ->
                     Just Connor
+
                 _ ->
                     Nothing
+      , submissions = []
       }
-    , Cmd.none
+    , fetchSubmissions flags.apiUrl
     )
 
 
@@ -46,9 +58,29 @@ type Msg
     | SelectPerson Person
     | Submit
     | SubmitResult (Result Http.Error String)
+    | FetchSubmissions
+    | GotSubmissions (Result Http.Error (List Submission))
 
 
 port savePerson : String -> Cmd msg
+
+
+submissionDecoder : Decode.Decoder Submission
+submissionDecoder =
+    Decode.map4 Submission
+        (Decode.field "id" Decode.int)
+        (Decode.field "person" Decode.string)
+        (Decode.field "text" Decode.string)
+        (Decode.field "created_at" Decode.string)
+
+fetchSubmissions : String -> Cmd Msg
+fetchSubmissions url =
+    Http.get
+        { url = url ++ "/submissions"
+        , expect =
+            Http.expectJson GotSubmissions
+                (Decode.list submissionDecoder)
+        }
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -83,14 +115,27 @@ update msg model =
         SubmitResult result ->
             case result of
                 Ok response ->
-                    ( { model | status = "Success: " ++ response }
-                    , Cmd.none
+                    ( { model 
+                        | status = "Success: " ++ response 
+                        , inputText = ""
+                      }
+                    , fetchSubmissions model.apiUrl
                     )
 
                 Err err ->
                     ( { model | status = "Error: " ++ httpErrorToString err }
                     , Cmd.none
                     )
+        FetchSubmissions ->
+            ( model, fetchSubmissions model.apiUrl )
+        
+        GotSubmissions result -> 
+            case result of
+                Ok subs ->
+                    ( { model | submissions = subs }, Cmd.none )
+                
+                Err err ->
+                    ( { model | status = httpErrorToString err }, Cmd.none )
 
 
 sendPost : String -> Person -> String -> Cmd Msg
@@ -110,7 +155,7 @@ sendPost url person payload =
                 ]
     in
     Http.post
-        { url = url
+        { url = url ++ "/submit"
         , body = Http.jsonBody body
         , expect = Http.expectString SubmitResult
         }
@@ -135,19 +180,20 @@ httpErrorToString err =
             "Bad response body"
 
 
-
+viewSubmission : Submission -> Html Msg
+viewSubmission sub =
+    div []
+        [ p [] [ text (sub.person ++ ": " ++ sub.text) ]
+        , p [] [ text sub.createdAt ]
+        ]
 
 view : Model -> Html Msg
 view model =
     case model.person of
         Nothing ->
             div []
-                [ button
-                    [ onClick (SelectPerson Mary) ]
-                    [ text "Mary" ]
-                , button
-                    [ onClick (SelectPerson Connor) ]
-                    [ text "Connor" ]
+                [ button [ onClick (SelectPerson Mary) ] [ text "Mary" ]
+                , button [ onClick (SelectPerson Connor) ] [ text "Connor" ]
                 ]
 
         Just _ ->
@@ -162,6 +208,9 @@ view model =
                     , button [] [ text "Submit" ]
                     ]
                 , p [] [ text model.status ]
+
+                , div []
+                    (List.map viewSubmission model.submissions)
                 ]
 
 
