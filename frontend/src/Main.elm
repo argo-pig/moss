@@ -28,13 +28,23 @@ type alias Model =
     , submittedToday : Bool
     }
 
+type alias TodayResponse =
+    { submitted : Bool
+    , text : String
+    }
+
+
+todayDecoder : Decode.Decoder TodayResponse
+todayDecoder =
+    Decode.map2 TodayResponse
+        (Decode.field "submitted" Decode.bool)
+        (Decode.field "text" Decode.string)
+
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( { apiUrl = flags.apiUrl
-      , inputText = ""
-      , status = ""
-      , person =
+    let
+        maybePerson =
             case flags.person of
                 Just "Mary" ->
                     Just Mary
@@ -44,9 +54,22 @@ init flags =
 
                 _ ->
                     Nothing
+
+        cmd =
+            case maybePerson of
+                Just person ->
+                    fetchToday flags.apiUrl person
+
+                Nothing ->
+                    Cmd.none
+    in
+    ( { apiUrl = flags.apiUrl
+      , inputText = ""
+      , status = ""
+      , person = maybePerson
       , submittedToday = False
       }
-    , Cmd.none
+    , cmd
     )
 
 
@@ -55,6 +78,7 @@ type Msg
     | SelectPerson Person
     | Submit
     | SubmitResult (Result Http.Error String)
+    | GotToday (Result Http.Error TodayResponse)
 
 
 port savePerson : String -> Cmd msg
@@ -69,13 +93,28 @@ personToString person =
         Connor ->
             "Connor"
 
+fetchToday : String -> Person -> Cmd Msg
+fetchToday url person =
+    Http.get
+        { url = url ++ "/today/" ++ (personToString person)
+        , expect =
+            Http.expectJson GotToday todayDecoder
+        }
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         SelectPerson person ->
-            ( { model | person = Just person }
-            , savePerson (personToString person)
+            ( { model 
+                | person = Just person 
+                , submittedToday = False
+                , inputText = ""
+                , status = ""
+              }
+            , Cmd.batch 
+                [ savePerson (personToString person)
+                , fetchToday model.apiUrl person
+                ]
             )
 
         UpdateText txt ->
@@ -93,25 +132,41 @@ update msg model =
                     , sendPost model.apiUrl person model.inputText
                     )
 
+        GotToday result ->
+            case result of
+                Ok today ->
+                    ( { model
+                        | submittedToday = today.submitted
+                        , inputText = today.text
+                        , status =
+                            if today.submitted then
+                                "your message for today has been sent <3"
+                            else
+                                ""
+                      }
+                    , Cmd.none
+                    )
+                
+                Err err ->
+                    ( { model
+                        | status = "Failed to load today's message"
+                      }
+                    , Cmd.none
+                    )
+        
         SubmitResult result ->
             case result of
-                Ok response ->
-                    if response == "already_submitted" then
-                        ( { model
-                            | submittedToday = True
-                            , status = "your message for today has been sent <3"
-                          }
-                        , Cmd.none
-                        )
-
-                    else
-                        ( { model
-                            | submittedToday = True
-                            , inputText = ""
-                            , status = "sent ✔"
-                          }
-                        , Cmd.none
-                        )
+                Ok _ ->
+                    case model.person of
+                        Just person ->
+                             ( { model
+                                 | submittedToday = True
+                                 , status = "sent"
+                               }
+                             , fetchToday model.apiUrl person
+                             )
+                        Nothing ->
+                            ( model, Cmd.none )
 
                 Err (Http.BadStatus 409) ->
                     ( { model
@@ -122,7 +177,9 @@ update msg model =
                     )
 
                 Err err ->
-                    ( { model | status = "Error: " ++ httpErrorToString err }
+                    ( { model
+                        | status = "Error: " ++ httpErrorToString err
+                      }
                     , Cmd.none
                     )
 
@@ -178,9 +235,8 @@ view model =
                         [ disabled model.submittedToday
                         , placeholder
                             (if model.submittedToday then
-                                "your message for today has been sent <3"
-
-                             else
+                                ""
+                            else
                                 "type your message here"
                             )
                         , value model.inputText

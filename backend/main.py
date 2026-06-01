@@ -18,7 +18,7 @@ class SubmissionOut(BaseModel):
     id: int
     person: str
     text: str
-    created_at: str
+    created_at: str | None
 
 
 class SubmissionIn(BaseModel):
@@ -63,6 +63,37 @@ def get_submissions(person: str):
         for r in rows
     ]
 
+@app.get("/today/{person}")
+def get_today_submission(person: str):
+    if person not in VALID_PEOPLE:
+        raise HTTPException(status_code=404, detail="Unknown person")
+
+    with psycopg.connect("dbname=moss user=postgres") as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT text, created_at
+                FROM submissions
+                WHERE person = %s
+                  AND DATE(created_at) = CURRENT_DATE
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (person,),
+            )
+
+            row = cur.fetchone()
+
+    if row is None:
+        return {
+            "submitted": False,
+            "text": ""
+        }
+
+    return {
+        "submitted": True,
+        "text": row[0]
+    }
 
 @app.post("/submit")
 def submit(data: SubmissionIn):
@@ -108,24 +139,24 @@ def submit(data: SubmissionIn):
     }
 
 
-@app.get("/submitted-today/{person}")
-def submitted_today(person: str):
-    if person not in VALID_PEOPLE:
-        raise HTTPException(status_code=404, detail="Unknown person")
+# @app.get("/submitted-today/{person}")
+# def submitted_today(person: str):
+#     if person not in VALID_PEOPLE:
+#         raise HTTPException(status_code=404, detail="Unknown person")
 
-    with psycopg.connect("dbname=moss user=postgres") as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT 1
-                FROM submissions
-                WHERE person = %s
-                  AND DATE(created_at) = CURRENT_DATE
-                LIMIT 1
-                """,
-                (person,),
-            )
+#     with psycopg.connect("dbname=moss user=postgres") as conn:
+#         with conn.cursor() as cur:
+#             cur.execute(
+#                 """
+#                 SELECT 1
+#                 FROM submissions
+#                 WHERE person = %s
+#                   AND DATE(created_at) = CURRENT_DATE
+#                 LIMIT 1
+#                 """,
+#                 (person,),
+#             )
 
-            exists = cur.fetchone() is not None
+#             exists = cur.fetchone() is not None
 
-    return {"submitted": exists}
+#     return {"submitted": exists}
