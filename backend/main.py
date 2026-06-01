@@ -57,10 +57,27 @@ def get_submissions():
 
 @app.post("/submit")
 def submit(data: SubmissionIn):
-    with psycopg.connect(
-        "dbname=moss user=postgres"
-    ) as conn:
+    with psycopg.connect("dbname=moss user=postgres") as conn:
         with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT 1
+                FROM submissions
+                WHERE person = %s
+                  AND DATE(created_at) = CURRENT_DATE
+                LIMIT 1
+                """,
+                (data.person,)
+            )
+
+            existing = cur.fetchone()
+
+            if existing:
+                return {
+                    "status": "already_submitted"
+                }
+
             cur.execute(
                 """
                 INSERT INTO submissions (person, text)
@@ -78,3 +95,19 @@ def submit(data: SubmissionIn):
         "status": "saved",
         "id": submission_id,
     }
+
+@app.get("/submitted-today/{person}")
+def submitted_today(person: str):
+    with psycopg.connect("dbname=moss user=postgres") as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM submissions
+                WHERE person = %s
+                    AND DATE(created_at) = CURRENT_DATE
+                LIMIT 1
+                """,
+                (person, ),
+            )
+            exists = cur.fetchone() is not None
+    return {"submitted": exists}
