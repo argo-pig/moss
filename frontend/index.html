@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Elm POST Demo</title>
+    <title>moss</title>
 </head>
 <body>
 
@@ -12,11 +12,18 @@
 <script src="main.js"></script>
 
 <script>
+const storedPerson = localStorage.getItem("person");
+
 const app = Elm.Main.init({
     node: document.getElementById("app"),
     flags: {
-        apiUrl: window.APP_CONFIG.apiUrl
+        apiUrl: window.APP_CONFIG.apiUrl,
+        person: storedPerson
     }
+});
+
+app.ports.savePerson.subscribe(function(person) {
+    localStorage.setItem("person", person);
 });
 </script>
 
