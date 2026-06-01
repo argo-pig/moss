@@ -66,6 +66,14 @@ type Msg
 
 port savePerson : String -> Cmd msg
 
+personToString : Person -> String
+personToString person =
+    case person of
+        Mary ->
+            "Mary"
+        Connor ->
+            "Connor"
+
 
 submissionDecoder : Decode.Decoder Submission
 submissionDecoder =
@@ -88,17 +96,8 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         SelectPerson person ->
-            let 
-                personString =
-                    case person of
-                        Mary ->
-                            "Mary"
-                        
-                        Connor ->
-                            "Connor"
-            in
             ( { model | person = Just person }
-            , savePerson personString
+            , savePerson (personToString person)
             )
 
         UpdateText txt ->
@@ -143,17 +142,10 @@ update msg model =
 
 sendPost : String -> Person -> String -> Cmd Msg
 sendPost url person payload =
-    let
-        personString =
-            case person of
-                Mary ->
-                    "Mary"
-
-                Connor ->
-                    "Connor"
+    let    
         body = 
             Encode.object
-                [ ( "person", Encode.string personString )
+                [ ( "person", Encode.string (personToString person) )
                 , ( "text", Encode.string payload )
                 ]
     in
